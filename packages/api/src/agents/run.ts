@@ -11,6 +11,9 @@ import type {
 import type { Agent } from 'librechat-data-provider';
 import type * as t from '~/types';
 
+// Import new MOSS Agent Runtime
+import { AgentRuntime } from './runtime';
+
 const customProviders = new Set([
   Providers.XAI,
   Providers.OLLAMA,
@@ -107,6 +110,21 @@ export async function createRun({
     graphConfig.streamBuffer = 2000;
   }
 
+  // Feature flag: Use new MOSS Agent Runtime instead of LangGraph
+  // Set MOSS_AGENT_RUNTIME=true to enable
+  const useMossRuntime = process.env.MOSS_AGENT_RUNTIME === 'true';
+
+  if (useMossRuntime) {
+    // Use new MOSS Agent Runtime
+    return AgentRuntime.create({
+      runId,
+      graphConfig,
+      customHandlers,
+      recursionLimit: 10,
+    }) as Promise<Run<IState>>;
+  }
+
+  // Fallback to original LangGraph implementation
   return Run.create({
     runId,
     graphConfig,

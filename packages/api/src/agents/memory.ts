@@ -4,6 +4,15 @@ import { tool } from '@langchain/core/tools';
 import { Tools } from 'librechat-data-provider';
 import { logger } from '@librechat/data-schemas';
 import { Run, Providers, GraphEvents } from '@librechat/agents';
+// Import new MOSS Agent Runtime (optional, controlled by env var)
+let AgentRuntime: any = null;
+try {
+  if (process.env.MOSS_AGENT_RUNTIME === 'true') {
+    AgentRuntime = require('./runtime').AgentRuntime;
+  }
+} catch (e) {
+  // Fallback to original Run if runtime not available
+}
 import type {
   OpenAIClientOptions,
   StreamEventData,
@@ -368,7 +377,9 @@ ${memory ?? 'No existing memories'}`;
       [GraphEvents.TOOL_END]: new BasicToolEndHandler(memoryCallback),
     };
 
-    const run = await Run.create({
+    // Use new MOSS Agent Runtime if enabled, otherwise fallback to original Run
+    const RunClass = AgentRuntime || Run;
+    const run = await RunClass.create({
       runId: messageId,
       graphConfig: {
         type: 'standard',
