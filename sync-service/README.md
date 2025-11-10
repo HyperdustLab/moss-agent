@@ -1,3 +1,3 @@
-# Sync Service
+# Agent Sync Service
 
-Provides WebSocket and REST endpoints for agent collaboration.
+Provides real-time OT/CRDT synchronization for agents.

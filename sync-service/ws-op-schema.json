@@ -1,1 +1,4 @@
-{ "type": "object", "properties": { "op_id": {"type": "string"}, "actor": {"type": "string"} } }
+{
+  "title": "Agent Sync Op",
+  "type": "object"
+}

@@ -1,1 +1,5 @@
-{ "id": "agent://moss/cashier", "name": "x402 Cashier Agent" }
+{
+  "$agent": "1.0",
+  "id": "agent://moss/cashier",
+  "name": "x402 Cashier Agent"
+}

@@ -1,1 +1,4 @@
-{ "id": "agent://moss/agent-factory", "capabilities": ["agent.create"] }
+{
+  "$agent": "1.0",
+  "id": "agent://moss/agent-factory"
+}

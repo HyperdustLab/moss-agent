@@ -1,1 +1,4 @@
-{ "id": "agent://moss/prompt-optimizer", "capabilities": ["agent.edit"] }
+{
+  "$agent": "1.0",
+  "id": "agent://moss/prompt-optimizer"
+}
