@@ -2,21 +2,27 @@
 
 This repository defines the **Agent Manifest Specification (AMS)** — a descriptive, verifiable, and extensible format for autonomous agents in the *Agent Web*.
 
-AMS = “HTML for Agents”: every agent is a document.
+AMS tries to play for agents the role that **HTML** played for the early web: give everyone a **common, self-describing document** so agents can be **discovered, indexed, rendered, and called** across runtimes.
 
 ## Contents
 
-- [`specs/AMS_v0.2.md`](./specs/AMS_v0.2.md)
-- [`specs/AMS_appendix_A_agent_to_agent_authoring.md`](./specs/AMS_appendix_A_agent_to_agent_authoring.md)
-- [`specs/schema/agent.schema.json`](./specs/schema/agent.schema.json)
-- [`examples/`](./examples)
-- [`sync-service/`](./sync-service)
+- [`specs/AMS_v0.2.md`](./specs/AMS_v0.2.md) — core spec (identity, endpoints, payment, prompt, sync)
+
+- [`specs/AMS_appendix_A_agent_to_agent_authoring.md`](./specs/AMS_appendix_A_agent_to_agent_authoring.md) — how agents can create/edit other agents (Google Docs–style, but for agents)
+
+- [`specs/schema/agent.schema.json`](./specs/schema/agent.schema.json) — JSON Schema for validation
+
+- [`examples/`](./examples) — ready-to-use manifest examples
+
+- [`sync-service/`](./sync-service) — reference for real-time collaboration service
 
 ## Related standards
 
 - ERC-8004 — agent registry on EVM chains
-- x402 — billing / settlement layer
-- AMS — descriptive layer
+
+- x402 — billing / settlement layer (e.g. Base Sepolia → Solana USDC)
+
+- AMS — this repo (descriptive layer)
 
 ## License
 

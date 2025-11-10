@@ -1,4 +1,35 @@
 {
   "$agent": "1.0",
-  "id": "agent://moss/agent-factory"
+  "id": "agent://moss/agent-factory",
+  "name": "Agent Factory",
+  "version": "0.1.0",
+  "description": "Generates new AMS manifests from templates.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "generate-agent",
+      "href": "https://factory.mossai.com/generate",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": "string" },
+          "template": { "type": "string" }
+        },
+        "required": ["name", "role"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "manifest": { "type": "object" }
+        }
+      }
+    }
+  ],
+  "capabilities": ["agent.create", "agent.clone", "agent.scaffold"],
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  }
 }

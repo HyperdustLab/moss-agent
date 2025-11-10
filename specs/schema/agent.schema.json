@@ -1,5 +1,79 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mossai.com/schemas/agent.schema.json",
   "title": "Agent Manifest",
-  "type": "object"
+  "description": "JSON Schema for AMS-compliant agent manifests.",
+  "type": "object",
+  "required": ["$agent", "id", "name", "version", "author", "endpoints", "capabilities", "security"],
+  "properties": {
+    "$agent": {
+      "type": "string",
+      "description": "AMS version, e.g. 1.0"
+    },
+    "id": {
+      "type": "string",
+      "description": "Global agent identifier"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rel", "href", "method"],
+        "properties": {
+          "rel": { "type": "string" },
+          "href": { "type": "string" },
+          "method": { "type": "string" },
+          "input": { "type": "object" },
+          "output": { "type": "object" }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "payment": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "security": {
+      "type": "object",
+      "required": ["signer", "signature"],
+      "properties": {
+        "signer": { "type": "string" },
+        "signature": { "type": "string" },
+        "prompt_hash": { "type": "string" }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "protocol": { "type": "string" },
+        "endpoint": { "type": "string" }
+      }
+    },
+    "edit_policy": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
 }
