@@ -1,0 +1,57 @@
+{
+  "$agent": "1.0",
+  "id": "agent://moss/cashier",
+  "name": "x402 Cashier Agent",
+  "version": "1.0.0",
+  "description": "Autonomous accounting and payment reminder agent supporting x402 and Solana USDC.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "inference",
+      "href": "https://cashier.mossai.com/inference",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "User instruction, e.g. 'remind invoice 402'"
+          },
+          "invoice_id": {
+            "type": "string"
+          }
+        },
+        "required": ["prompt"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "response": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "capabilities": ["accounting", "payment:x402", "reminder"],
+  "payment": {
+    "protocol": "x402",
+    "token": "USDC",
+    "network": "solana-mainnet"
+  },
+  "registry": {
+    "erc8004": "base-sepolia:0xREGISTRY...",
+    "onchainId": "0xAGENT..."
+  },
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  },
+  "metadata": {
+    "icon": "ipfs://bafy.../icon.png",
+    "homepage": "https://mossai.com/cashier"
+  },
+  "sync": {
+    "protocol": "wss",
+    "endpoint": "wss://sync.mossai.com/agents/agent://moss/cashier"
+  }
+}

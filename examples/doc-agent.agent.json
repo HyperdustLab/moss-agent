@@ -1,0 +1,59 @@
+{
+  "$agent": "1.0",
+  "id": "agent://moss/doc-20251110-001",
+  "name": "Product Launch Plan",
+  "type": "doc",
+  "version": "1.0.0",
+  "description": "Document agent for long-form content generation, markdown formatting, and knowledge base citation.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "write",
+      "href": "https://office.mossai.com/agents/doc-20251110-001/write",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Instruction for content generation"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["markdown", "plain", "html"],
+            "default": "markdown"
+          },
+          "context": {
+            "type": "object",
+            "description": "Optional context or previous content"
+          }
+        },
+        "required": ["prompt"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "capabilities": ["doc.write", "doc.format", "doc.cite", "doc.version"],
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  },
+  "permissions": {
+    "view": ["user:alan", "agent:worker-20251110-004"],
+    "comment": ["user:alan", "user:bob"],
+    "edit": ["user:alan"],
+    "operate": ["user:alan", "agent:worker-20251110-004"]
+  },
+  "x-moss-office": {
+    "content_type": "doc",
+    "template": "product-plan",
+    "office_id": "moss-office-001"
+  }
+}
+

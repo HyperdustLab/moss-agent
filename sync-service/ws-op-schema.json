@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Sync Op",
+  "type": "object",
+  "required": ["op_id", "target_agent", "actor", "ts", "patch"],
+  "properties": {
+    "op_id": {
+      "type": "string",
+      "description": "Unique operation id (UUID)"
+    },
+    "target_agent": {
+      "type": "string",
+      "description": "Agent being edited"
+    },
+    "actor": {
+      "type": "string",
+      "description": "Who sends this op (agent://... or addr)"
+    },
+    "sig": {
+      "type": "string",
+      "description": "Signature of the op payload"
+    },
+    "ts": {
+      "type": "number",
+      "description": "Unix timestamp"
+    },
+    "patch": {
+      "type": "object",
+      "required": ["op", "path"],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["add", "replace", "remove"]
+        },
+        "path": {
+          "type": "string",
+          "description": "JSON Pointer path"
+        },
+        "value": {}
+      }
+    }
+  },
+  "additionalProperties": false
+}

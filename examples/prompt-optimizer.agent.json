@@ -1,0 +1,35 @@
+{
+  "$agent": "1.0",
+  "id": "agent://moss/prompt-optimizer",
+  "name": "Prompt Optimizer Agent",
+  "version": "0.1.0",
+  "description": "Optimizes prompt templates for other agents and writes back via Sync Service.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "optimize",
+      "href": "https://prompt.mossai.com/optimize",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "target_agent": { "type": "string" },
+          "prompt_template": { "type": "string" }
+        },
+        "required": ["target_agent", "prompt_template"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "optimized_prompt": { "type": "string" },
+          "ops": { "type": "array" }
+        }
+      }
+    }
+  ],
+  "capabilities": ["agent.edit", "prompt.optimize"],
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  }
+}

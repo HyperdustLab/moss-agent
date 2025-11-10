@@ -1,0 +1,39 @@
+openapi: 3.0.0
+info:
+  title: Agent Sync Service
+  version: 0.1.0
+paths:
+  /agents/{agentId}:
+    get:
+      summary: Get latest merged manifest for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../specs/schema/agent.schema.json"
+  /agents/{agentId}/history:
+    get:
+      summary: Get op history for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "./ws-op-schema.json"
