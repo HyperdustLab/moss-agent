@@ -1,0 +1,1 @@
+{ "type": "object", "properties": { "op_id": {"type": "string"}, "actor": {"type": "string"} } }

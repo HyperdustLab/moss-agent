@@ -1,0 +1,1 @@
+{ "id": "agent://moss/agent-factory", "capabilities": ["agent.create"] }
