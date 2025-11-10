@@ -774,21 +774,384 @@ moss-ai-office/
 
 ---
 
-## 11. 风险与挑战
+## 11. 快速实现路径：基于 LibreChat 改造
 
-### 11.1 技术风险
+### 11.1 为什么选择 LibreChat
+
+**LibreChat** 是一个开源的 ChatGPT 替代方案，基于 React + Node.js + Express，MIT 协议。选择它作为起点可以**大幅加速 MOSS AI Office 的原型开发**。
+
+| 特性 | LibreChat 提供 | 对 MOSS 的价值 |
+|------|---------------|---------------|
+| ✅ 前端 UI | ChatGPT 式多会话界面，React + Tailwind | 直接改成三栏式 MOSS Chat（少量改动） |
+| ✅ 后端 | Node.js + Express + WebSocket | 可扩展为多 Agent 消息总线 |
+| ✅ 对话上下文 | 支持多轮、记忆 | 可改为智能体上下文存储（Agent Memory） |
+| ✅ 插件/工具系统 | 已支持 OpenAI 插件与函数调用 | 可扩展为 WorkerAgent / MCP 工具系统 |
+| ✅ 开源协议 | MIT | 可自由改造、二次分发 |
+| ✅ 部署简便 | Docker + Local run | 快速验证多 Agent 协作原型 |
+
+**总结**：LibreChat = ChatGPT 的可改版骨架，只需在它之上装上"智能体系统"和"Workspace 概念"。
+
+### 11.2 架构映射
+
+#### 原版 LibreChat 架构
+```
+Frontend (React)
+    ↓
+Backend (Node.js + Express)
+    ↓
+LLM Provider (OpenAI API)
+```
+
+#### 改造成 MOSS 架构
+```
+Frontend (MOSS Chat - 三栏布局)
+    ↓
+MOSS Server (Agent Runtime)
+    ├── Chat Context → Agent Memory
+    ├── Agent Registry (统一 Agent API)
+    ├── Event Bus (WebSocket)
+    ├── Worker Orchestrator (任务分配)
+    └── Storage (Agent State / Workspace)
+```
+
+**关键变化**：Chat 不再直接打到 OpenAI API，而是通过 MOSS Server 分发给对应的智能体。
+
+### 11.3 前端层改造重点
+
+#### 11.3.1 改 UI 布局为「三栏」
+
+**原本：**
+```
+Sidebar（会话） + ChatWindow
+```
+
+**改为：**
+```
+Sidebar（Spaces/Agents） + ChatWindow（消息流） + AgentPanel（右侧实时视图）
+```
+
+**具体实现：**
+- 在 `Chat.jsx` 中增加右侧容器 `<AgentPanel />`
+- 在 `Sidebar.jsx` 增加"Agents"、"Worker Center"、"Offices"分区
+- 用 `useState(activeAgent)` 控制右侧展示哪个 Agent
+
+#### 11.3.2 改消息结构
+
+**原消息：**
+```json
+{
+  "id": "...",
+  "role": "assistant",
+  "content": "text..."
+}
+```
+
+**新结构：**
+```json
+{
+  "id": "...",
+  "type": "event" | "text" | "agent_ref" | "task_update",
+  "agent_id": "worker-001",
+  "content": "WorkerAgent 创建了 DocAgent: WeeklyReport",
+  "metadata": {
+    "agent_state": {...},
+    "hooks_triggered": [...]
+  }
+}
+```
+
+前端在 `<Message />` 组件里判断类型，渲染不同卡片（文本消息、Agent 事件、任务进度等）。
+
+#### 11.3.3 增加右侧 Agent 视图
+
+新建 `AgentPanel.jsx`：
+```jsx
+<Tabs>
+  <Tab label="Live">
+    <DocAgentView data={agentState} />
+  </Tab>
+  <Tab label="History">
+    <AgentHistoryView data={agentEvents} />
+  </Tab>
+</Tabs>
+```
+
+Agent 状态通过 WebSocket 从服务器推送过来。
+
+#### 11.3.4 输入框改造
+
+替换 `<InputBox />` 为智能输入框：
+```jsx
+<SmartInput
+  onSubmit={handleSend}
+  onCreateAgent={handleCreateAgent}
+  onMentionAgent={handleMentionAgent}
+  onAttachFile={handleAttachFile}
+/>
+```
+
+加上 `@` 自动补全智能体（agent name），`+` 打开创建弹窗。
+
+#### 11.3.5 任务流渲染
+
+WorkerAgent 输出可用独立组件：
+```jsx
+<TaskCard 
+  status="running" 
+  progress={60}
+  agentId="worker-001"
+  steps={[...]}
+/>
+```
+
+自动出现在聊天流中，连接后端任务状态。
+
+### 11.4 后端层改造重点
+
+#### 11.4.1 新增 Agent Registry
+
+```javascript
+// services/AgentRegistry.js
+class AgentRegistry {
+  constructor() {
+    this.agents = new Map(); // 内存缓存
+    this.db = new Database(); // PostgreSQL/MongoDB
+  }
+  
+  async get(agentId) {
+    // 从数据库加载 Agent
+    const agent = await this.db.agents.findOne({ id: agentId });
+    return {
+      id: agent.id,
+      type: agent.agent_type,
+      state: agent.state,
+      capabilities: agent.capabilities,
+      permissions: agent.permissions,
+      hooks: agent.hooks
+    };
+  }
+  
+  async act(agentId, action, params, caller) {
+    // 1. 权限检查
+    const agent = await this.get(agentId);
+    if (!this.checkPermission(agent, caller, action)) {
+      throw new Error('Permission denied');
+    }
+    
+    // 2. 执行 action
+    const result = await this.executeAction(agent, action, params);
+    
+    // 3. 触发 hooks
+    const hooksTriggered = await this.triggerHooks(agent, action);
+    
+    // 4. 广播 state 更新
+    this.eventBus.broadcast(`agent:${agentId}`, {
+      state: agent.state,
+      action,
+      result
+    });
+    
+    return { result, hooksTriggered };
+  }
+}
+```
+
+#### 11.4.2 改造消息路由
+
+**原 LibreChat：**
+```javascript
+// 直接调用 OpenAI
+const response = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: conversationHistory
+});
+```
+
+**改造为 MOSS：**
+```javascript
+// 路由到 Agent
+app.post('/api/chat', async (req, res) => {
+  const { message, agentId, officeId } = req.body;
+  
+  // 解析 mentions (@agent-xxx)
+  const mentions = parseMentions(message);
+  
+  if (mentions.length > 0) {
+    // 调用被 @ 的 Agent
+    const agent = await agentRegistry.get(mentions[0]);
+    const response = await agentRegistry.act(agent.id, 'chat', {
+      message,
+      context: { officeId }
+    }, `human:${req.user.id}`);
+    
+    res.json(response);
+  } else {
+    // 默认路由到 Office 的默认 Agent
+    const defaultAgent = await getDefaultAgent(officeId);
+    const response = await agentRegistry.act(defaultAgent.id, 'chat', {
+      message
+    }, `human:${req.user.id}`);
+    
+    res.json(response);
+  }
+});
+```
+
+#### 11.4.3 新增 Event Bus（WebSocket）
+
+```javascript
+// services/EventBus.js
+class EventBus {
+  constructor(io) {
+    this.io = io; // Socket.io instance
+  }
+  
+  // 订阅 Agent state 变更
+  subscribeAgent(agentId, socketId) {
+    this.io.to(socketId).join(`agent:${agentId}`);
+  }
+  
+  // 广播 Agent 更新
+  broadcastAgentUpdate(agentId, data) {
+    this.io.to(`agent:${agentId}`).emit('agent:update', data);
+  }
+  
+  // 广播 Office 事件
+  broadcastOfficeEvent(officeId, event) {
+    this.io.to(`office:${officeId}`).emit('office:event', event);
+  }
+}
+```
+
+#### 11.4.4 任务调度中心（Worker Orchestrator）
+
+```javascript
+// services/WorkerOrchestrator.js
+class WorkerOrchestrator {
+  constructor(agentRegistry, queue) {
+    this.agentRegistry = agentRegistry;
+    this.queue = queue; // BullMQ
+  }
+  
+  // 定时任务
+  scheduleCron(workerAgentId, cron, action, params) {
+    this.queue.add('worker:cron', {
+      workerAgentId,
+      action,
+      params
+    }, {
+      repeat: { pattern: cron }
+    });
+  }
+  
+  // 事件触发
+  onAgentEvent(agentId, event) {
+    // 查找订阅该事件的 WorkerAgent
+    const workers = this.findWorkersByHook(agentId, event);
+    
+    workers.forEach(worker => {
+      this.queue.add('worker:event', {
+        workerId: worker.id,
+        triggerAgent: agentId,
+        event
+      });
+    });
+  }
+}
+```
+
+### 11.5 技术栈建议
+
+| 模块 | 技术选型 | 说明 |
+|------|---------|------|
+| **前端** | React + Zustand + Tailwind + Shadcn/ui | LibreChat 已有 React + Tailwind，只需添加状态管理 |
+| **后端** | Node.js + Express + Socket.io | LibreChat 已有，只需扩展 |
+| **Agent 通信** | 内部事件总线（Redis pub/sub 或本地事件） | 新增模块 |
+| **长任务执行** | BullMQ / Agenda.js | 配合 WorkerAgent |
+| **AI 调用** | LangChain / MCP-Adapter + OpenAI / Ollama | 替换原 LibreChat 的 OpenAI 直接调用 |
+| **CRDT 同步** | Yjs | 新增，用于 Agent state 实时同步 |
+| **数据存储** | MongoDB / PostgreSQL + Redis | LibreChat 已有数据库，扩展 schema |
+
+### 11.6 开发路线（最短实现路径）
+
+| 阶段 | 目标 | 时间 | 关键任务 |
+|------|------|------|---------|
+| **阶段 1** | 改 LibreChat UI → 三栏布局 + AgentPanel | 2~3 天 | 修改布局组件、添加 AgentPanel、改造 Sidebar |
+| **阶段 2** | 增加 Agent Registry + WebSocket 实时更新 | 3~5 天 | 实现 AgentRegistry、改造消息路由、集成 WebSocket |
+| **阶段 3** | 实现 WorkerAgent → 能自动生成/编辑文档 | 5~7 天 | WorkerOrchestrator、任务队列、spawn/edit 能力 |
+| **阶段 4** | 增加 Workspace 结构 + 多 Agent 协作 | 1~2 周 | Office 模型、权限系统、Hooks 机制 |
+| **阶段 5** | 接入 MOSS Call（WebRTC + 语音识别） | 后续阶段 | mediasoup、Whisper 集成 |
+
+### 11.7 与统一 Agent API 的集成
+
+LibreChat 改造后的架构完全兼容统一 Agent API：
+
+```javascript
+// 在 LibreChat 后端中实现统一 Agent API
+app.get('/api/v1/agents/:id', async (req, res) => {
+  const agent = await agentRegistry.get(req.params.id);
+  res.json(agent);
+});
+
+app.post('/api/v1/agents/:id/act', async (req, res) => {
+  const { action, params } = req.body;
+  const caller = req.headers['x-caller'] || `human:${req.user.id}`;
+  
+  const result = await agentRegistry.act(
+    req.params.id,
+    action,
+    params,
+    caller
+  );
+  
+  res.json(result);
+});
+```
+
+这样 LibreChat 改造版就能无缝对接设计文档中定义的统一 Agent API。
+
+### 11.8 优势与注意事项
+
+**优势：**
+- ✅ **快速启动**：2-3 天即可看到三栏布局原型
+- ✅ **成熟基础**：LibreChat 已有完善的聊天界面和消息流
+- ✅ **技术栈匹配**：React + Node.js，与设计文档一致
+- ✅ **开源可改**：MIT 协议，可自由改造
+
+**注意事项：**
+- ⚠️ **CRDT 同步需新增**：LibreChat 没有实时协作，需要集成 Yjs
+- ⚠️ **Agent 系统需从零实现**：核心的 Agent Registry、统一 API 需要新建
+- ⚠️ **状态管理需重构**：从单会话上下文改为多 Agent 状态管理
+
+### 11.9 结论
+
+> 💬 **基于 LibreChat 改造是完全可行、而且是最快路径。**
+
+- 前端：UI + 消息流改造（2-3 天）
+- 后端：事件总线 + 智能体注册（3-5 天）
+- ChatGPT → MOSS 的架构差距小，只要补上 **Agent 生命周期与任务调度**，LibreChat 就能演化为完整的 **MOSS Chat 原型**。
+
+**推荐策略**：
+1. **MVP 阶段**：使用 LibreChat 改造，快速验证核心概念
+2. **生产阶段**：根据需求逐步重构，采用设计文档中的完整架构
+
+---
+
+## 12. 风险与挑战
+
+### 12.1 技术风险
 - **CRDT 冲突**：复杂数据结构可能产生意外合并
 - **LLM 延迟**：Agent 执行可能较慢，需要优化
 - **WebRTC 兼容性**：不同浏览器支持差异
 
-### 11.2 解决方案
+### 12.2 解决方案
 - **测试覆盖**：CRDT 操作充分测试
 - **异步处理**：Agent 执行异步化，提供进度反馈
 - **降级方案**：WebRTC 不支持时降级到音频
 
 ---
 
-## 12. 参考资料
+## 13. 参考资料
 
 - [Agent Manifest Specification v0.2](./AMS_v0.2.md)
 - [Appendix A: Agent-to-Agent Authoring](./AMS_appendix_A_agent_to_agent_authoring.md)
