@@ -322,12 +322,330 @@ actions: ["update_cell", "calc", "query", "render", "export"]
 actions: ["add_slide", "update_slide", "render", "export"]
 
 // WorkerAgent
-actions: ["spawn", "edit_other", "route", "schedule"]
+actions: ["spawn", "edit_other", "route", "schedule", "dispatch"]
 ```
 
-### 4.3 事件驱动自动化（Hooks）
+### 4.3 WorkerAgent 二级分类体系
 
-#### 4.3.1 Hooks 触发流程
+#### 4.3.1 问题背景
+
+**核心问题**：LLM 可能说任务"完成"了，但外部世界还没动。需要区分：
+- **内部操作**：操作 DocAgent、SheetAgent、SlideAgent（即时完成）
+- **外部操作**：调用 Twitter、GitHub、Notion API（需要鉴权、重试、异步）
+
+**解决方案**：WorkerAgent 作为"大脑和调度中心"，外部技能 Agent（ExtSkillAgent）作为"手和工具"。
+
+#### 4.3.2 WorkerAgent 二级分类
+
+```typescript
+interface WorkerAgent {
+  id: string;
+  type: "worker";
+  category: "internal" | "external" | "toolset";
+  skills?: string[];        // 仅 external/toolset 有
+  auth_profiles?: Record<string, AuthProfile>; // 仅 external 有
+}
+
+// 1. Internal Worker - 操作内部智能体
+{
+  "id": "worker-internal-001",
+  "type": "worker",
+  "category": "internal",
+  "capabilities": ["spawn", "edit_other", "route"],
+  "description": "生成日报、更新KPI、把doc转成slide"
+}
+
+// 2. External Skill Worker (ExtSkillAgent) - 操作外部世界
+{
+  "id": "worker-twitter-001",
+  "type": "worker",
+  "category": "external",
+  "skills": ["twitter.post", "twitter.reply", "twitter.fetch"],
+  "auth_profiles": {
+    "marketing": { "token": "...", "oauth_refresh": "..." },
+    "founder": { "token": "...", "oauth_refresh": "..." }
+  },
+  "description": "发推、回推、拉评论"
+}
+
+// 3. Toolset Worker (ToolboxAgent) - 封装工具集
+{
+  "id": "worker-toolbox-001",
+  "type": "worker",
+  "category": "toolset",
+  "skills": ["crawler", "translate", "image_gen", "video_synth"],
+  "description": "爬虫、翻译、图像生成、合成视频"
+}
+```
+
+#### 4.3.3 执行流程（外部任务示例）
+
+**场景**：用户在 MOSS Chat 中说"@worker 帮我用官方号发一条：MOSS AI Office 上线了"
+
+```
+1. 用户发送消息
+   → Chat Service 解析 mentions → worker-internal-001
+
+2. WorkerAgent 解析任务
+   → 任务类型: social.post
+   → 目标平台: twitter
+   → 内容: "MOSS AI Office 上线了"
+   → Profile: marketing（从上下文推断或用户指定）
+
+3. WorkerAgent 查找外部技能 Agent
+   → 查询技能注册表: skills["twitter.post"] → worker-twitter-001
+
+4. WorkerAgent 分发任务
+   → POST /api/v1/agents/worker-twitter-001/act
+   {
+     "action": "dispatch",
+     "params": {
+       "task_id": "task-20251110-0001",
+       "skill": "twitter.post",
+       "payload": {
+         "text": "MOSS AI Office 上线了",
+         "profile": "marketing"
+       },
+       "callback_chat": "chat-xxx"
+     },
+     "caller": "agent:worker-internal-001"
+   }
+
+5. ExtSkillAgent 执行外部操作
+   → 调用 Twitter API（带鉴权、重试逻辑）
+   → 返回结果: { "tweet_id": "...", "url": "https://x.com/..." }
+
+6. ExtSkillAgent 回调 WorkerAgent
+   → POST /api/v1/agents/worker-internal-001/act
+   {
+     "action": "task_callback",
+     "params": {
+       "task_id": "task-20251110-0001",
+       "status": "success",
+       "result": { "tweet_id": "...", "url": "..." }
+     }
+   }
+
+7. WorkerAgent 更新 Chat
+   → 通过 Event Bus 发送任务更新事件到 Chat
+   → 前端渲染: "✅ TwitterAgent 已完成任务: [推文链接]"
+```
+
+#### 4.3.4 任务状态回流机制
+
+**统一事件格式**：
+
+```typescript
+interface TaskUpdateEvent {
+  type: "task.update";
+  task_id: string;
+  status: "pending" | "running" | "success" | "failed";
+  agent: string;              // 执行任务的 agent_id
+  progress?: number;         // 0-100
+  result?: any;              // 成功时的结果
+  error?: string;            // 失败时的错误信息
+  timestamp: number;
+}
+
+// 前端渲染示例
+{
+  "type": "task.update",
+  "task_id": "task-20251110-0001",
+  "status": "success",
+  "agent": "worker-twitter-001",
+  "result": {
+    "tweet_id": "1234567890",
+    "url": "https://x.com/mossai/status/1234567890"
+  },
+  "timestamp": 1731231231
+}
+```
+
+前端在 Chat 中渲染为：
+- **Pending**: "⏳ TwitterAgent 正在处理任务..."
+- **Running**: "🔄 TwitterAgent 正在发布推文... (60%)"
+- **Success**: "✅ TwitterAgent 已完成: [推文链接]"
+- **Failed**: "❌ TwitterAgent 失败: 认证过期，请重新授权"
+
+#### 4.3.5 外部技能 Agent 接口规范
+
+**统一接口**：
+
+```typescript
+// ExtSkillAgent 必须实现的 action
+interface ExtSkillAgentActions {
+  // 接收任务
+  "dispatch": {
+    params: {
+      task_id: string;
+      skill: string;           // "twitter.post" | "github.create_issue" | ...
+      payload: Record<string, any>;
+      callback_chat?: string;   // 可选：直接回调到 Chat
+      callback_agent?: string;   // 可选：回调到 WorkerAgent
+    };
+    returns: {
+      task_id: string;
+      status: "accepted" | "rejected";
+      estimated_time?: number;   // 预计完成时间（秒）
+    };
+  };
+  
+  // 查询任务状态
+  "task_status": {
+    params: { task_id: string };
+    returns: TaskUpdateEvent;
+  };
+  
+  // 取消任务
+  "task_cancel": {
+    params: { task_id: string };
+    returns: { cancelled: boolean };
+  };
+}
+```
+
+**技能注册表**：
+
+```typescript
+// 系统维护的技能注册表
+interface SkillRegistry {
+  "twitter.post": {
+    agent_id: "worker-twitter-001",
+    required_auth: ["oauth2"],
+    required_params: ["text", "profile"]
+  };
+  "github.create_issue": {
+    agent_id: "worker-github-001",
+    required_auth: ["token"],
+    required_params: ["repo", "title", "body"]
+  };
+  "notion.create_page": {
+    agent_id: "worker-notion-001",
+    required_auth: ["api_key"],
+    required_params: ["database_id", "properties"]
+  };
+}
+```
+
+#### 4.3.6 安全与多账号支持
+
+**Auth Profile 管理**：
+
+```typescript
+interface AuthProfile {
+  profile_name: string;      // "marketing" | "founder" | "personal"
+  auth_type: "oauth2" | "token" | "api_key";
+  credentials: {
+    token?: string;
+    refresh_token?: string;
+    api_key?: string;
+    expires_at?: number;
+  };
+  permissions: string[];     // 该 profile 允许的操作
+}
+
+// WorkerAgent 下任务时指定 profile
+{
+  "action": "dispatch",
+  "params": {
+    "skill": "twitter.post",
+    "payload": {
+      "text": "...",
+      "profile": "marketing"  // 必须指定，防止乱发
+    }
+  }
+}
+```
+
+**权限检查**：
+
+```javascript
+// ExtSkillAgent 执行前检查
+async function executeExternalTask(task) {
+  // 1. 检查 profile 是否存在
+  const profile = this.auth_profiles[task.payload.profile];
+  if (!profile) {
+    throw new Error(`Profile ${task.payload.profile} not found`);
+  }
+  
+  // 2. 检查权限
+  if (!profile.permissions.includes(task.skill)) {
+    throw new Error(`Profile ${task.payload.profile} cannot ${task.skill}`);
+  }
+  
+  // 3. 检查 token 是否过期（OAuth2）
+  if (profile.auth_type === "oauth2" && profile.credentials.expires_at < Date.now()) {
+    await this.refreshToken(profile);
+  }
+  
+  // 4. 执行任务
+  return await this.callExternalAPI(task, profile);
+}
+```
+
+#### 4.3.7 目录结构建议
+
+```
+/agents
+  /worker
+    /internal/
+      /daily-report-worker.js    # Internal Worker
+      /kpi-update-worker.js
+    /external/
+      /twitter-agent.js          # ExtSkillAgent
+      /github-agent.js
+      /notion-agent.js
+      /discord-agent.js
+    /toolbox/
+      /browser-agent.js          # ToolboxAgent
+      /crawler-agent.js
+      /translate-agent.js
+```
+
+#### 4.3.8 与 LibreChat 集成
+
+**后端改造**：
+
+```javascript
+// WorkerAgent 收到任务后 dispatch
+class WorkerAgent {
+  async act(action, params, caller) {
+    if (action === "dispatch") {
+      // 查找外部技能 Agent
+      const skillAgent = await this.findSkillAgent(params.skill);
+      
+      // 分发任务
+      const task = await skillAgent.act("dispatch", {
+        task_id: generateTaskId(),
+        skill: params.skill,
+        payload: params.payload,
+        callback_chat: params.callback_chat
+      }, `agent:${this.id}`);
+      
+      // 返回任务 ID，前端可以轮询或通过 WebSocket 接收更新
+      return { task_id: task.task_id, status: "dispatched" };
+    }
+  }
+}
+```
+
+**前端渲染**：
+
+```jsx
+// Chat 中渲染任务卡片
+<TaskCard 
+  taskId={task.task_id}
+  agent={task.agent}
+  status={task.status}
+  progress={task.progress}
+  result={task.result}
+  onCancel={() => cancelTask(task.task_id)}
+/>
+```
+
+### 4.4 事件驱动自动化（Hooks）
+
+#### 4.4.1 Hooks 触发流程
 
 ```
 1. Agent state 更新
@@ -338,7 +656,7 @@ actions: ["spawn", "edit_other", "route", "schedule"]
 6. 传递 hook.with 参数
 ```
 
-#### 4.3.2 示例：自动更新 SlideAgent
+#### 4.4.2 示例：自动更新 SlideAgent
 
 ```json
 // SheetAgent 的 hooks
@@ -354,7 +672,7 @@ actions: ["spawn", "edit_other", "route", "schedule"]
 
 当 SheetAgent 数据更新时，自动触发 SlideAgent 更新。
 
-#### 4.3.3 WorkerAgent 的定时任务
+#### 4.4.3 WorkerAgent 的定时任务
 
 WorkerAgent 的 state 中可以存储规则：
 
@@ -373,9 +691,9 @@ WorkerAgent 的 state 中可以存储规则：
 
 系统定时检查 WorkerAgent 的 rules，触发相应操作。
 
-### 4.4 MOSS Chat（统一 Agent 调用）
+### 4.5 MOSS Chat（统一 Agent 调用）
 
-#### 4.4.1 消息模型
+#### 4.5.1 消息模型
 ```typescript
 interface ChatMessage {
   message_id: string;
@@ -391,7 +709,7 @@ interface ChatMessage {
 }
 ```
 
-#### 4.4.2 Agent 调用流程（统一接口）
+#### 4.5.2 Agent 调用流程（统一接口）
 
 ```
 1. 用户发送: "@doc-123 summarize"
@@ -407,7 +725,7 @@ interface ChatMessage {
 6. 更新 UI
 ```
 
-#### 4.4.3 Agent 链式调用
+#### 4.5.3 Agent 链式调用
 
 ```
 用户: "@worker-001 use @doc-123 to create @slide-456"
