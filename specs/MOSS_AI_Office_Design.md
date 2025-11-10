@@ -1440,8 +1440,421 @@ app.post('/api/v1/agents/:id/act', async (req, res) => {
 - ⚠️ **CRDT 同步需新增**：LibreChat 没有实时协作，需要集成 Yjs
 - ⚠️ **Agent 系统需从零实现**：核心的 Agent Registry、统一 API 需要新建
 - ⚠️ **状态管理需重构**：从单会话上下文改为多 Agent 状态管理
+- ⚠️ **团队协作功能需补足**：LibreChat 支持多用户认证，但缺少完整的团队办公功能
 
-### 11.9 结论
+### 11.9 补足团队协作功能
+
+#### 11.9.1 LibreChat 现状分析
+
+**✅ 已具备的团队/多用户相关功能：**
+- 支持用户注册、邮箱登录、社交登录（OAuth）等认证体系
+- 支持 SSO / SAML 认证模式
+- 支持多用户环境（Collaborative Sharing: Share agents with specific users and groups）
+- 支持用户管理脚本（Create User, Delete User）
+
+**⚠️ 缺口／需要增强的地方（针对团队办公场景）：**
+- **组织结构**：部门、项目空间、多个 Office/Space 支持不完善
+- **权限模型**：细粒度权限（谁能编辑哪个文档/对话/Agent）需要扩展
+- **多人协作界面**：类似 Google Workspace 的多人同时编辑、版本管理、团队视图需增强
+- **频道/群组模型**：Slack/Teams 那种"频道 + 群组 + 成员管理"需定制
+- **团队任务流**：Agent 工作流、跨用户 Agent 调度需二次开发
+
+#### 11.9.2 扩展"空间/组织（Office）"模型
+
+**数据库 Schema 扩展：**
+
+```javascript
+// 扩展 User 模型
+const UserSchema = {
+  // ... LibreChat 原有字段
+  organization_id: String,    // 所属组织
+  spaces: [{                  // 用户所属的多个 Space
+    space_id: String,
+    role: String,             // "owner" | "editor" | "viewer"
+    joined_at: Date
+  }]
+};
+
+// 新增 Organization 模型
+const OrganizationSchema = {
+  organization_id: String,
+  name: String,
+  owner_id: String,
+  created_at: Date,
+  settings: {
+    max_spaces: Number,
+    max_agents: Number
+  }
+};
+
+// 新增 Space/Office 模型
+const SpaceSchema = {
+  space_id: String,
+  organization_id: String,
+  name: String,
+  description: String,
+  owner_id: String,
+  members: [{
+    user_id: String,
+    role: String,             // "owner" | "editor" | "viewer" | "worker_runner"
+    permissions: [String]     // ["create_agent", "edit_agent", "run_worker"]
+  }],
+  agents: [String],           // agent_id 列表
+  created_at: Date
+};
+```
+
+**前端界面改造：**
+
+```jsx
+// 改造 Sidebar.jsx
+<Sidebar>
+  <SpacesSection>
+    {spaces.map(space => (
+      <SpaceItem 
+        key={space.id}
+        name={space.name}
+        memberCount={space.members.length}
+        agentCount={space.agents.length}
+        onClick={() => setActiveSpace(space.id)}
+      />
+    ))}
+  </SpacesSection>
+  
+  <AgentsSection spaceId={activeSpace}>
+    {agents.map(agent => (
+      <AgentItem key={agent.id} agent={agent} />
+    ))}
+  </AgentsSection>
+  
+  <ChatsSection spaceId={activeSpace}>
+    {/* 原有聊天列表 */}
+  </ChatsSection>
+  
+  <WorkerCenterSection>
+    {/* WorkerAgent 任务中心 */}
+  </WorkerCenterSection>
+</Sidebar>
+```
+
+#### 11.9.3 建立权限与角色系统
+
+**角色定义：**
+
+```typescript
+interface Role {
+  name: string;
+  permissions: Permission[];
+}
+
+const Roles = {
+  OWNER: {
+    name: "owner",
+    permissions: ["*"]  // 所有权限
+  },
+  EDITOR: {
+    name: "editor",
+    permissions: [
+      "agent.create",
+      "agent.edit",
+      "agent.view",
+      "agent.invoke",
+      "chat.send"
+    ]
+  },
+  VIEWER: {
+    name: "viewer",
+    permissions: [
+      "agent.view",
+      "chat.view",
+      "chat.send"
+    ]
+  },
+  WORKER_RUNNER: {
+    name: "worker_runner",
+    permissions: [
+      "agent.view",
+      "worker.run",
+      "worker.schedule",
+      "chat.view"
+    ]
+  }
+};
+```
+
+**权限检查中间件：**
+
+```javascript
+// middleware/permission.js
+async function checkPermission(req, res, next) {
+  const { spaceId, agentId, action } = req.params;
+  const userId = req.user.id;
+  
+  // 1. 检查用户是否在 Space 中
+  const space = await Space.findOne({ space_id: spaceId });
+  const member = space.members.find(m => m.user_id === userId);
+  if (!member) {
+    return res.status(403).json({ error: "Not a member of this space" });
+  }
+  
+  // 2. 检查权限
+  const role = Roles[member.role.toUpperCase()];
+  if (!role.permissions.includes(action) && !role.permissions.includes("*")) {
+    return res.status(403).json({ error: "Permission denied" });
+  }
+  
+  // 3. 如果是 Agent 操作，检查 Agent 级别的权限
+  if (agentId) {
+    const agent = await Agent.findOne({ id: agentId });
+    const agentPermission = agent.permissions.human[`human:${userId}`];
+    if (!agentPermission || !agentPermission.includes(action)) {
+      return res.status(403).json({ error: "Agent permission denied" });
+    }
+  }
+  
+  next();
+}
+```
+
+#### 11.9.4 多用户协作 UI 改造
+
+**聊天界面增强：**
+
+```jsx
+// 消息组件显示操作者
+<Message 
+  sender={message.sender}  // "human:alan" | "agent:doc-123"
+  content={message.content}
+  metadata={{
+    operator: message.operator,  // 谁执行的操作
+    agent_refs: message.agent_refs,  // @Agent 引用
+    task_updates: message.task_updates  // 任务状态更新
+  }}
+/>
+
+// 输入框支持 @Agent
+<SmartInput
+  onMentionAgent={(agentId) => {
+    // 显示 Agent 选择器
+    setMentionedAgent(agentId);
+  }}
+  onCreateAgent={() => {
+    // 打开创建 Agent 弹窗（需要 create_agent 权限）
+    openCreateAgentDialog();
+  }}
+/>
+```
+
+**右侧 Agent Panel 多人协作视图：**
+
+```jsx
+<AgentPanel agentId={activeAgent}>
+  <Tabs>
+    <Tab label="Live">
+      {/* 实时编辑视图 */}
+      <CollaborativeEditor
+        agentId={activeAgent}
+        currentUser={user}
+        collaborators={onlineUsers}  // 显示其他在线用户
+        onEdit={(change) => {
+          // 通过 WebSocket 发送编辑操作
+          ws.send({
+            type: "agent.edit",
+            agent_id: activeAgent,
+            change,
+            user: user.id
+          });
+        }}
+      />
+    </Tab>
+    
+    <Tab label="History">
+      <AgentHistoryView 
+        agentId={activeAgent}
+        events={agentEvents}  // 包含所有用户的操作历史
+      />
+    </Tab>
+    
+    <Tab label="Permissions">
+      <PermissionManager
+        agentId={activeAgent}
+        permissions={agent.permissions}
+        onUpdate={(newPermissions) => {
+          // 更新权限（需要 owner 权限）
+          updateAgentPermissions(activeAgent, newPermissions);
+        }}
+      />
+    </Tab>
+  </Tabs>
+</AgentPanel>
+```
+
+#### 11.9.5 Agent 工作流与任务流
+
+**任务卡片 UI：**
+
+```jsx
+// Chat 中渲染任务卡片
+<TaskCard
+  taskId={task.task_id}
+  agent={task.agent}
+  status={task.status}
+  progress={task.progress}
+  assignedTo={task.assigned_to}  // 分配给谁（用户或 WorkerAgent）
+  createdBy={task.created_by}
+  result={task.result}
+  onAssign={(userId) => {
+    // 分配任务给用户或 WorkerAgent
+    assignTask(task.task_id, userId);
+  }}
+  onCancel={() => {
+    cancelTask(task.task_id);
+  }}
+/>
+
+// 任务分配界面
+<TaskAssignmentDialog
+  taskId={task.task_id}
+  availableWorkers={workerAgents}
+  availableUsers={spaceMembers}
+  onAssign={(assignee) => {
+    assignTask(task.task_id, assignee);
+  }}
+/>
+```
+
+**WorkerAgent 任务调度：**
+
+```javascript
+// 在 Space 中分配任务给 WorkerAgent
+class TaskScheduler {
+  async assignTaskToWorker(spaceId, task, workerAgentId) {
+    // 1. 检查权限
+    const hasPermission = await this.checkPermission(
+      spaceId, 
+      workerAgentId, 
+      "worker.run"
+    );
+    if (!hasPermission) {
+      throw new Error("No permission to run worker");
+    }
+    
+    // 2. 创建任务记录
+    const taskRecord = await Task.create({
+      task_id: generateTaskId(),
+      space_id: spaceId,
+      worker_agent_id: workerAgentId,
+      status: "pending",
+      created_by: task.created_by,
+      payload: task.payload
+    });
+    
+    // 3. 分发任务
+    await this.workerOrchestrator.dispatch(workerAgentId, taskRecord);
+    
+    // 4. 通知 Chat
+    await this.eventBus.broadcastTaskUpdate(spaceId, taskRecord);
+    
+    return taskRecord;
+  }
+}
+```
+
+#### 11.9.6 审计与日志
+
+**操作日志记录：**
+
+```javascript
+// middleware/audit.js
+async function auditLog(req, res, next) {
+  const log = {
+    timestamp: Date.now(),
+    user_id: req.user.id,
+    space_id: req.params.spaceId,
+    action: req.method + " " + req.path,
+    agent_id: req.params.agentId,
+    params: req.body,
+    ip: req.ip
+  };
+  
+  // 写入审计日志
+  await AuditLog.create(log);
+  
+  // 如果是 Agent 操作，记录到 Agent 历史
+  if (req.params.agentId) {
+    await AgentHistory.create({
+      agent_id: req.params.agentId,
+      event: log.action,
+      operator: `human:${req.user.id}`,
+      timestamp: log.timestamp,
+      details: log.params
+    });
+  }
+  
+  next();
+}
+```
+
+**审计日志查询界面：**
+
+```jsx
+<AuditLogView spaceId={activeSpace}>
+  <Filters>
+    <UserFilter />
+    <AgentFilter />
+    <ActionFilter />
+    <TimeRangeFilter />
+  </Filters>
+  
+  <LogTable>
+    {logs.map(log => (
+      <LogRow
+        timestamp={log.timestamp}
+        user={log.user}
+        action={log.action}
+        agent={log.agent}
+        details={log.details}
+      />
+    ))}
+  </LogTable>
+</AuditLogView>
+```
+
+#### 11.9.7 界面调整总结
+
+**左侧导航栏结构：**
+
+```
+Sidebar
+├── Offices / Spaces
+│   ├── Office 1
+│   │   ├── Agents (DocAgent, SheetAgent, ...)
+│   │   ├── Chats
+│   │   └── Worker Center
+│   └── Office 2
+├── Personal Agents
+└── Settings
+```
+
+**关键改造点：**
+1. **Spaces 分组**：按 Office/Space 组织 Agent 和 Chat
+2. **权限标识**：在 Agent 列表显示权限图标（可编辑/只读）
+3. **在线用户**：在 Agent Panel 显示当前在线协作者
+4. **任务中心**：独立的 Worker Center 视图，显示所有任务状态
+5. **审计入口**：Space 设置中可查看操作日志
+
+#### 11.9.8 实施优先级
+
+| 优先级 | 功能 | 时间 | 依赖 |
+|--------|------|------|------|
+| **P0** | Space/Office 模型扩展 | 3-5 天 | 数据库 Schema |
+| **P0** | 基础权限系统 | 5-7 天 | Space 模型 |
+| **P1** | 多用户协作 UI | 1-2 周 | 权限系统 + WebSocket |
+| **P1** | 任务流 UI | 1 周 | WorkerAgent 系统 |
+| **P2** | 审计日志 | 3-5 天 | 操作记录中间件 |
+| **P2** | 高级权限管理 | 1 周 | 基础权限系统 |
+
+### 11.10 结论
 
 > 💬 **基于 LibreChat 改造是完全可行、而且是最快路径。**
 
