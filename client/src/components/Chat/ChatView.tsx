@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
-import { Spinner } from '@librechat/client';
+import { Spinner, useMediaQuery } from '@librechat/client';
 import { useParams } from 'react-router-dom';
 import { Constants, buildTree } from 'librechat-data-provider';
 import type { TMessage } from 'librechat-data-provider';
@@ -16,6 +16,8 @@ import ChatForm from './Input/ChatForm';
 import Landing from './Landing';
 import Header from './Header';
 import Footer from './Footer';
+// AgentPanel 已移到侧边栏，不再需要弹出式 UI
+// import AgentPanel from './AgentPanel';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -34,6 +36,8 @@ function ChatView({ index = 0 }: { index?: number }) {
   const rootSubmission = useRecoilValue(store.submissionByIndex(index));
   const addedSubmission = useRecoilValue(store.submissionByIndex(index + 1));
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
+  const activeAgent = useRecoilValue(store.activeAgentId);
+  const isSmallScreen = useMediaQuery('(max-width: 768px)');
 
   const fileMap = useFileMapContext();
 
@@ -80,30 +84,34 @@ function ChatView({ index = 0 }: { index?: number }) {
         <AddedChatContext.Provider value={addedChatHelpers}>
           <Presentation>
             <div className="flex h-full w-full flex-col">
-              {!isLoading && <Header />}
-              <>
-                <div
-                  className={cn(
-                    'flex flex-col',
-                    isLandingPage
-                      ? 'flex-1 items-center justify-end sm:justify-center'
-                      : 'h-full overflow-y-auto',
-                  )}
-                >
-                  {content}
+              {/* Chat 内容 */}
+              <div className="flex flex-1 flex-col">
+                {!isLoading && <Header />}
+                <>
                   <div
                     className={cn(
-                      'w-full',
-                      isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
+                      'flex flex-col',
+                      isLandingPage
+                        ? 'flex-1 items-center justify-end sm:justify-center'
+                        : 'h-full overflow-y-auto',
                     )}
                   >
-                    <ChatForm index={index} />
-                    {isLandingPage ? <ConversationStarters /> : <Footer />}
+                    {content}
+                    <div
+                      className={cn(
+                        'w-full',
+                        isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
+                      )}
+                    >
+                      <ChatForm index={index} />
+                      {isLandingPage ? <ConversationStarters /> : <Footer />}
+                    </div>
                   </div>
-                </div>
-                {isLandingPage && <Footer />}
-              </>
+                  {isLandingPage && <Footer />}
+                </>
+              </div>
             </div>
+            {/* AgentPanel 已移到侧边栏，不再需要弹出式 UI */}
           </Presentation>
         </AddedChatContext.Provider>
       </ChatContext.Provider>

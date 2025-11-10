@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, memo, lazy, Suspense, useRef } from 'react';
-import { useRecoilValue } from 'recoil';
+import { useRecoilValue, useSetRecoilState, useRecoilState } from 'recoil';
 import { useMediaQuery } from '@librechat/client';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { ConversationListResponse } from 'librechat-data-provider';
@@ -15,6 +15,8 @@ import { useConversationsInfiniteQuery } from '~/data-provider';
 import { Conversations } from '~/components/Conversations';
 import SearchBar from './SearchBar';
 import NewChat from './NewChat';
+import SpacesSection from './SpacesSection';
+import AgentsSection from './AgentsSection';
 import { cn } from '~/utils';
 import store from '~/store';
 
@@ -61,6 +63,54 @@ const Nav = memo(
     const [newUser, setNewUser] = useLocalStorage('newUser', true);
     const [showLoading, setShowLoading] = useState(false);
     const [tags, setTags] = useState<string[]>([]);
+
+    // Agent Panel state management
+    const activeSpace = useRecoilValue(store.activeSpaceId);
+    const activeAgent = useRecoilValue(store.activeAgentId);
+    const [spaces, setSpaces] = useRecoilState(store.spacesList);
+    const [agents, setAgents] = useRecoilState(store.agentsList);
+    const setActiveSpace = useSetRecoilState(store.activeSpaceId);
+    const setActiveAgent = useSetRecoilState(store.activeAgentId);
+
+    // Initialize test data if empty (for development/testing)
+    useEffect(() => {
+      if (spaces.length === 0) {
+        const testSpaces = [
+          {
+            id: 'space-001',
+            name: '测试空间',
+            memberCount: 3,
+            agentCount: 4,
+          },
+        ];
+        setSpaces(testSpaces);
+      }
+      if (agents.length === 0) {
+        const testAgents = [
+          {
+            id: 'agent-doc-001',
+            name: '项目文档',
+            type: 'doc' as const,
+          },
+          {
+            id: 'agent-sheet-001',
+            name: '数据表格',
+            type: 'sheet' as const,
+          },
+          {
+            id: 'agent-slide-001',
+            name: '演示文稿',
+            type: 'slide' as const,
+          },
+          {
+            id: 'agent-worker-001',
+            name: '工作流 Agent',
+            type: 'worker' as const,
+          },
+        ];
+        setAgents(testAgents);
+      }
+    }, [spaces.length, agents.length, setSpaces, setAgents]);
 
     const hasAccessToBookmarks = useHasAccess({
       permissionType: PermissionTypes.BOOKMARKS,
@@ -218,6 +268,21 @@ const Nav = memo(
                         toggleNav={toggleNavVisible}
                         headerButtons={headerButtons}
                         isSmallScreen={isSmallScreen}
+                      />
+                      <SpacesSection
+                        spaces={spaces}
+                        activeSpace={activeSpace}
+                        onSpaceSelect={setActiveSpace}
+                      />
+                      <AgentsSection
+                        agents={agents}
+                        activeAgent={activeAgent}
+                        onAgentSelect={(agentId) => {
+                          console.log('onAgentSelect called with:', agentId);
+                          setActiveAgent(agentId);
+                          console.log('activeAgent state should be set to:', agentId);
+                        }}
+                        spaceId={activeSpace}
                       />
                       <Conversations
                         conversations={conversations}
