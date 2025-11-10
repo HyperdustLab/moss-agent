@@ -1,0 +1,79 @@
+{
+  "$agent": "1.0",
+  "id": "agent://moss/slide-20251110-003",
+  "name": "Q4 Roadmap Presentation",
+  "type": "slide",
+  "version": "1.0.0",
+  "description": "Presentation agent that converts structured outlines into visual slides.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "render",
+      "href": "https://office.mossai.com/agents/slide-20251110-003/render",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "outline": {
+            "type": "array",
+            "description": "Structured outline for slides",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "content": { "type": "string" },
+                "layout": { "type": "string" }
+              }
+            }
+          },
+          "template": {
+            "type": "string",
+            "description": "Template name"
+          }
+        },
+        "required": ["outline"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "slides": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "preview_url": { "type": "string" }
+        }
+      }
+    },
+    {
+      "rel": "export",
+      "href": "https://office.mossai.com/agents/slide-20251110-003/export",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": ["pdf", "pptx", "html"],
+            "default": "pdf"
+          }
+        }
+      }
+    }
+  ],
+  "capabilities": ["slide.render", "slide.export", "slide.template"],
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  },
+  "permissions": {
+    "view": ["user:alan", "user:bob"],
+    "edit": ["user:alan"],
+    "operate": ["user:alan", "agent:worker-20251110-004"]
+  },
+  "x-moss-office": {
+    "content_type": "slide",
+    "template": "roadmap",
+    "office_id": "moss-office-001"
+  }
+}
+

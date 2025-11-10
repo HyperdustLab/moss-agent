@@ -55,6 +55,7 @@ This document does **not** define how agents do inference, only how they are **d
   "$agent": "1.0",
   "id": "agent://moss/cashier",
   "name": "x402 Cashier Agent",
+  "type": "worker",
   "version": "1.0.0",
   "description": "Autonomous accounting and payment reminder agent.",
   "author": "0xA1B2C3D4E5...",
@@ -64,7 +65,8 @@ This document does **not** define how agents do inference, only how they are **d
   "registry": {},
   "security": {},
   "metadata": {},
-  "sync": {}
+  "sync": {},
+  "permissions": {}
 }
 ```
 
@@ -75,6 +77,7 @@ This document does **not** define how agents do inference, only how they are **d
 | `$agent`       | string | ✅        | AMS version                            |
 | `id`           | string | ✅        | global agent identifier (URI/DID/hash) |
 | `name`         | string | ✅        | human name                             |
+| `type`         | string | ⚙️       | agent type (doc/sheet/slide/worker)    |
 | `version`      | string | ✅        | semantic version                       |
 | `description`  | string | ✅        | short text                             |
 | `author`       | string | ✅        | on-chain addr / DID                    |
@@ -85,6 +88,7 @@ This document does **not** define how agents do inference, only how they are **d
 | `security`     | object | ✅        | signer + signature                     |
 | `metadata`     | object | ⚙️       | icon, homepage, tags                   |
 | `sync`         | object | ⚙️       | real-time update channel               |
+| `permissions`  | object | ⚙️       | access control (view/comment/edit/operate/spawn) |
 | `x-*`          | any    | optional | vendor extensions                      |
 
 ---
@@ -233,19 +237,69 @@ Runtimes can subscribe to this endpoint to receive incremental updates (OT/CRDT 
 
 ---
 
-## 9. Extensibility
+## 9. Agent Types (v0.2)
+
+Agents MAY declare a `type` field to indicate their primary content/function category:
+
+- `doc` — Document agent (long-form text, markdown, mixed content)
+- `sheet` — Spreadsheet agent (tabular data, calculations, data fetching)
+- `slide` — Presentation agent (structured outline → visual pages)
+- `worker` — Worker agent (creates/edits other agents, automation)
+
+See [Appendix B](./AMS_appendix_B_moss_ai_office.md) for detailed MOSS AI Office collaboration model.
+
+---
+
+## 10. Permissions Model (v0.2)
+
+Agents MAY declare a `permissions` object for access control:
+
+```json
+"permissions": {
+  "view": ["user:alan", "agent:worker-001"],
+  "comment": ["user:alan", "user:bob"],
+  "edit": ["user:alan"],
+  "operate": ["user:alan", "agent:worker-001"],
+  "spawn": ["agent:worker-001"]
+}
+```
+
+Permission levels:
+- `view` — Read-only access
+- `comment` — Can leave annotations
+- `edit` — Can modify agent content/configuration
+- `operate` — Can invoke agent or use as tool
+- `spawn` — Can create new agent instances (typically WorkerAgents)
+
+If `permissions` is absent, only `security.signer` has full access.
+
+---
+
+## 11. Extensibility
 
 Vendors can add `x-*` namespaced fields:
 
 ```json
 "x-moss-office": {
   "panel": "https://office.mossai.com/ui/cashier",
-  "role": "financial_assistant"
+  "role": "financial_assistant",
+  "content_type": "doc",
+  "template": "product-plan"
 }
 ```
 
+For MOSS AI Office integration, see [Appendix B](./AMS_appendix_B_moss_ai_office.md).
+
 ---
 
-## 10. License
+## 12. Related Documents
+
+- [Appendix A: Agent-to-Agent Authoring](./AMS_appendix_A_agent_to_agent_authoring.md) — how agents create/edit other agents
+
+- [Appendix B: MOSS AI Office](./AMS_appendix_B_moss_ai_office.md) — Agent-as-Document collaboration model
+
+---
+
+## 13. License
 
 MIT

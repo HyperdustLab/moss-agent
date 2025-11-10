@@ -17,6 +17,11 @@
     "name": {
       "type": "string"
     },
+    "type": {
+      "type": "string",
+      "enum": ["doc", "sheet", "slide", "worker"],
+      "description": "Agent type for MOSS AI Office"
+    },
     "version": {
       "type": "string"
     },
@@ -73,6 +78,36 @@
     },
     "edit_policy": {
       "type": "object"
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of users/agents with view permission"
+        },
+        "comment": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of users/agents with comment permission"
+        },
+        "edit": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of users/agents with edit permission"
+        },
+        "operate": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of users/agents with operate permission"
+        },
+        "spawn": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of users/agents with spawn permission"
+        }
+      }
     }
   },
   "additionalProperties": true

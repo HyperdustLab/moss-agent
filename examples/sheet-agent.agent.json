@@ -1,0 +1,67 @@
+{
+  "$agent": "1.0",
+  "id": "agent://moss/sheet-20251110-002",
+  "name": "KPI Dashboard",
+  "type": "sheet",
+  "version": "1.0.0",
+  "description": "Spreadsheet agent for tabular data, calculations, and real-time data fetching.",
+  "author": "0xA1B2C3D4E5...",
+  "endpoints": [
+    {
+      "rel": "calculate",
+      "href": "https://office.mossai.com/agents/sheet-20251110-002/calculate",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "formula": {
+            "type": "string",
+            "description": "Formula expression"
+          },
+          "cells": {
+            "type": "object",
+            "description": "Cell data"
+          }
+        },
+        "required": ["formula"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "result": {},
+          "updated_cells": { "type": "object" }
+        }
+      }
+    },
+    {
+      "rel": "fetch",
+      "href": "https://office.mossai.com/agents/sheet-20251110-002/fetch",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "data_source": {
+            "type": "string",
+            "description": "External data source URL"
+          }
+        },
+        "required": ["data_source"]
+      }
+    }
+  ],
+  "capabilities": ["sheet.calculate", "sheet.fetch", "sheet.export", "sheet.format"],
+  "security": {
+    "signer": "0xPUBLISHER...",
+    "signature": "0xABCD..."
+  },
+  "permissions": {
+    "view": ["user:alan", "user:bob"],
+    "operate": ["user:alan", "agent:worker-20251110-004"]
+  },
+  "x-moss-office": {
+    "content_type": "sheet",
+    "data_sources": ["api://analytics.mossai.com/kpi"],
+    "office_id": "moss-office-001"
+  }
+}
+

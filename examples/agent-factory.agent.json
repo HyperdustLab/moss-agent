@@ -1,35 +1,93 @@
 {
   "$agent": "1.0",
-  "id": "agent://moss/agent-factory",
-  "name": "Agent Factory",
+  "id": "agent://moss/worker-20251110-004",
+  "name": "Daily Report Generator",
+  "type": "worker",
   "version": "0.1.0",
-  "description": "Generates new AMS manifests from templates.",
+  "description": "Worker agent that automatically creates daily report DocAgents and updates related agents.",
   "author": "0xA1B2C3D4E5...",
   "endpoints": [
     {
-      "rel": "generate-agent",
-      "href": "https://factory.mossai.com/generate",
+      "rel": "create-agent",
+      "href": "https://office.mossai.com/agents/worker-20251110-004/create",
       "method": "POST",
       "input": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "role": { "type": "string" },
-          "template": { "type": "string" }
+          "target_type": {
+            "type": "string",
+            "enum": ["doc", "sheet", "slide"],
+            "description": "Type of agent to create"
+          },
+          "template": {
+            "type": "string",
+            "description": "Template name"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name for the new agent"
+          },
+          "context": {
+            "type": "object",
+            "description": "Context data for agent creation"
+          }
         },
-        "required": ["name", "role"]
+        "required": ["target_type", "template", "name"]
       },
       "output": {
         "type": "object",
         "properties": {
+          "agent_id": { "type": "string" },
           "manifest": { "type": "object" }
         }
       }
+    },
+    {
+      "rel": "edit-agent",
+      "href": "https://office.mossai.com/agents/worker-20251110-004/edit",
+      "method": "POST",
+      "input": {
+        "type": "object",
+        "properties": {
+          "target_agent": {
+            "type": "string",
+            "description": "ID of agent to edit"
+          },
+          "patch": {
+            "type": "object",
+            "description": "JSON Patch operation"
+          }
+        },
+        "required": ["target_agent", "patch"]
+      }
     }
   ],
-  "capabilities": ["agent.create", "agent.clone", "agent.scaffold"],
+  "capabilities": ["agent.create", "agent.edit", "agent.clone", "scheduler"],
   "security": {
     "signer": "0xPUBLISHER...",
     "signature": "0xABCD..."
+  },
+  "permissions": {
+    "operate": ["user:alan"],
+    "spawn": ["agent:worker-20251110-004"]
+  },
+  "x-moss-office": {
+    "content_type": "worker",
+    "rules": [
+      {
+        "trigger": "0 9 * * *",
+        "action": "create",
+        "target_type": "doc",
+        "template": "daily-report"
+      },
+      {
+        "trigger": "event:sheet.updated",
+        "source": "agent://moss/sheet-20251110-002",
+        "action": "edit",
+        "target_type": "slide",
+        "target_id": "agent://moss/slide-20251110-003"
+      }
+    ],
+    "office_id": "moss-office-001"
   }
 }
